@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>簡單倒計時器</title>
+  <meta name="description" content="可自訂預設時間、全螢幕顯示、開始/暫停/重置三鍵平排的倒計時器。" />
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#111827;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --accent:#22c55e;
+      --accent-2:#3b82f6;
+      --danger:#ef4444;
+      --ring: rgba(59,130,246,.35);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 80% -10%, #1f2937 0%, var(--bg) 60%);
+      color:var(--text);
+      display:flex; align-items:center; justify-content:center; padding:16px;
+    }
+    .wrap{
+      width:100%; max-width:560px;
+      background:rgba(17,24,39,.65);
+      backdrop-filter: blur(8px);
+      border:1px solid rgba(148,163,184,.15);
+      border-radius:16px;
+      padding:20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    header{
+      display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;
+    }
+    .title{
+      font-weight:700; letter-spacing:.2px; font-size:18px;
+    }
+    .preset{
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+    }
+    .preset label{
+      font-size:12px; color:var(--muted);
+    }
+    .preset input{
+      width:68px; padding:8px 10px; border-radius:10px; border:1px solid rgba(148,163,184,.25);
+      background:#0b1220; color:var(--text); outline:none;
+      -moz-appearance: textfield;
+    }
+    .preset input::-webkit-outer-spin-button,
+    .preset input::-webkit-inner-spin-button{ -webkit-appearance: none; margin: 0; }
+    .preset input:focus{ box-shadow:0 0 0 4px var(--ring); border-color:#3b82f640; }
+    .screen{
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      padding:22px 16px; border-radius:14px; background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.02));
+      border:1px solid rgba(148,163,184,.12);
+    }
+    .time{
+      font-variant-numeric: tabular-nums;
+      font-size:64px; font-weight:800; letter-spacing:2px;
+      line-height:1; margin:12px 0 6px;
+      text-shadow: 0 1px 0 rgba(255,255,255,.04);
+      user-select:none;
+    }
+    @media (max-width:420px){ .time{ font-size:48px; } }
+    .hint{ font-size:12px; color:var(--muted); }
+    .progress{
+      margin-top:16px; width:100%; height:8px; background:#0b1220; border-radius:999px; overflow:hidden; border:1px solid rgba(148,163,184,.18);
+    }
+    .bar{ height:100%; width:0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .2s ease; }
+    /* 三鍵平排 */
+    .btns{
+      display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; margin-top:18px; width:100%;
+    }
+    button{
+      padding:12px 14px; border-radius:12px; border:1px solid transparent;
+      background:#1f2937; color:var(--text); font-weight:700; letter-spacing:.2px; cursor:pointer;
+      transition:.2s transform, .2s filter, .2s background, .2s border-color;
+      outline:none; min-width:0;
+    }
+    button:active{ transform: translateY(1px) scale(.997); }
+    .primary{ background: linear-gradient(180deg, #10b981, #059669); border-color:#0e9f6e; }
+    .secondary{ background: linear-gradient(180deg, #3b82f6, #2563eb); border-color:#3b82f6; }
+    .danger{ background: linear-gradient(180deg, #ef4444, #dc2626); border-color:#ef4444; }
+    .ghost{ background:#111827; border-color:rgba(148,163,184,.25); }
+    .blink{
+      animation: blink 1s step-end infinite;
+      color:#fffbeb;
+      text-shadow: 0 0 8px rgba(245, 158, 11, .9);
+    }
+    @keyframes blink{ 50%{opacity:.3} }
+    .small{ font-size:12px; color:var(--muted); }
+    footer{ margin-top:14px; display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+    .kbd{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      border:1px solid rgba(148,163,184,.3); border-bottom-width:2px;
+      background:#0b1220; padding:2px 6px; border-radius:6px; color:#e5e7eb; font-size:12px;
+    }
+
+    /* Fullscreen */
+    :fullscreen .wrap, .wrap:fullscreen{
+      max-width:none; width:100%; height:100%;
+      display:flex; flex-direction:column; justify-content:space-between;
+      background:rgba(17,24,39,.7);
+    }
+    :fullscreen .time, .wrap:fullscreen .time{
+      font-size:min(16vw, 160px);
+      letter-spacing:4px; margin:16px 0 8px;
+    }
+    :fullscreen .btns, .wrap:fullscreen .btns{
+      grid-template-columns: repeat(3, 1fr); gap:12px;
+    }
+    :fullscreen .btns button, .wrap:fullscreen .btns button{
+      padding:16px 18px; font-size:18px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="container">
+    <header>
+      <div class="title">倒計時器</div>
+      <div class="preset" aria-label="預設倒數時間">
+        <label>預設時間</label>
+        <input id="hh" type="number" min="0" step="1" value="0" aria-label="小時" />
+        <input id="mm" type="number" min="0" max="59" step="1" value="1" aria-label="分鐘" />
+        <input id="ss" type="number" min="0" max="59" step="1" value="30" aria-label="秒" />
+        <button id="apply" class="ghost" title="套用上方預設時間（不會打斷當前計時）">套用</button>
+        <button id="fs" class="ghost" title="全螢幕（F）">進入全螢幕</button>
+      </div>
+    </header>
+
+    <section class="screen" role="timer" aria-live="polite" aria-atomic="true">
+      <div id="time" class="time">00:01:30</div>
+      <div id="status" class="hint">已就緒</div>
+      <div class="progress"><div id="bar" class="bar"></div></div>
+      <div class="btns">
+        <button id="start" class="primary">開始</button>
+        <button id="pause" class="secondary">暫停</button>
+        <button id="reset" class="danger">重置</button>
+      </div>
+    </section>
+
+    <footer>
+      <div class="small">鍵盤：<span class="kbd">Space</span> 開始/暫停，<span class="kbd">R</span> 重置，<span class="kbd">F</span> 全螢幕</div>
+      <div class="small">每次重置皆回到你的「預設時間」。</div>
+    </footer>
+  </div>
+
+  <script>
+    // 狀態
+    let presetMs = toMs({h:0,m:1,s:30});
+    let remainingMs = presetMs;
+    let timerId = null;
+    let lastTick = 0;
+    let running = false;
+
+    // 元件
+    const elTime = document.getElementById('time');
+    const elStatus = document.getElementById('status');
+    const elBar = document.getElementById('bar');
+    const elStart = document.getElementById('start');
+    const elPause = document.getElementById('pause');
+    const elReset = document.getElementById('reset');
+    const elHH = document.getElementById('hh');
+    const elMM = document.getElementById('mm');
+    const elSS = document.getElementById('ss');
+    const elApply = document.getElementById('apply');
+    const elFs = document.getElementById('fs');
+    const container = document.getElementById('container');
+
+    // 初始化
+    syncDisplay();
+    updateFsButton();
+
+    // 事件
+    elStart.addEventListener('click', start);
+    elPause.addEventListener('click', pause);
+    elReset.addEventListener('click', resetToPreset);
+    elApply.addEventListener('click', applyPresetFromInputs);
+    elFs.addEventListener('click', toggleFullscreen);
+    document.addEventListener('keydown', (e)=>{
+      if (e.code === 'Space'){ e.preventDefault(); toggle(); }
+      if (e.key === 'r' || e.key === 'R'){ e.preventDefault(); resetToPreset(); }
+      if (e.key === 'f' || e.key === 'F'){ e.preventDefault(); toggleFullscreen(); }
+    });
+
+    // 監聽全螢幕狀態變化
+    ['fullscreenchange','webkitfullscreenchange','msfullscreenchange'].forEach(ev=>{
+      document.addEventListener(ev, updateFsButton);
+    });
+
+    // 主邏輯
+    function start(){
+      if (running) return;
+      if (remainingMs <= 0) remainingMs = presetMs;
+      running = true;
+      lastTick = performance.now();
+      elStatus.textContent = '計時中…';
+      tick();
+    }
+
+    function pause(){
+      if (!running) return;
+      running = false;
+      cancelAnimationFrame(timerId);
+      elStatus.textContent = '已暫停';
+    }
+
+    function toggle(){
+      running ? pause() : start();
+    }
+
+    function resetToPreset(){
+      running = false;
+      cancelAnimationFrame(timerId);
+      remainingMs = presetMs;
+      elStatus.textContent = '已重置至預設時間';
+      syncDisplay();
+    }
+
+    function applyPresetFromInputs(){
+      const h = clampInt(elHH.value, 0, 99);
+      const m = clampInt(elMM.value, 0, 59);
+      const s = clampInt(elSS.value, 0, 59);
+      elHH.value = h; elMM.value = m; elSS.value = s;
+      presetMs = toMs({h, m, s});
+      if (!running){
+        remainingMs = presetMs;
+        syncDisplay();
+        elStatus.textContent = '已更新預設時間';
+      } else {
+        elStatus.textContent = '已更新預設時間（重置後生效）';
+      }
+    }
+
+    function tick(){
+      if (!running) return;
+      const now = performance.now();
+      const delta = now - lastTick;
+      lastTick = now;
+
+      remainingMs = Math.max(0, remainingMs - delta);
+      syncDisplay();
+
+      if (remainingMs <= 0){
+        running = false;
+        elStatus.innerHTML = '時間到！';
+        elTime.classList.add('blink');
+        // 不退出全螢幕：僅通知與蜂鳴，不呼叫 exitFullscreen
+        notify();
+        return;
+      }
+      timerId = requestAnimationFrame(tick);
+    }
+
+    function syncDisplay(){
+      elTime.classList.toggle('blink', remainingMs <= 0);
+      elTime.textContent = fmt(remainingMs);
+      const ratio = presetMs > 0 ? 1 - (remainingMs / presetMs) : 1;
+      elBar.style.width = `${Math.min(100, Math.max(0, ratio * 100))}%`;
+    }
+
+    // 全螢幕
+    function isFullscreen(){
+      return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+    }
+    function requestFs(el){
+      if (el.requestFullscreen) return el.requestFullscreen();
+      if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+      if (el.msRequestFullscreen) return el.msRequestFullscreen();
+    }
+    function exitFs(){
+      if (document.exitFullscreen) return document.exitFullscreen();
+      if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+      if (document.msExitFullscreen) return document.msExitFullscreen();
+    }
+    function toggleFullscreen(){
+      if (isFullscreen()){
+        exitFs();
+      } else {
+        requestFs(container);
+      }
+    }
+    function updateFsButton(){
+      const fs = !!isFullscreen();
+      elFs.textContent = fs ? '退出全螢幕' : '進入全螢幕';
+      elFs.title = fs ? '退出全螢幕（F）' : '全螢幕（F）';
+    }
+
+    // 工具
+    function toMs({h=0,m=0,s=0}){ return ((+h||0)*3600 + (+m||0)*60 + (+s||0)) * 1000; }
+    function clampInt(v, min, max){
+      v = Math.floor(Math.abs(parseInt(v,10)||0));
+      if (v < min) v = min;
+      if (v > max) v = max;
+      return v;
+    }
+    function fmt(ms){
+      ms = Math.max(0, Math.floor(ms));
+      const totalSec = Math.floor(ms/1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600)/60);
+      const s = totalSec % 60;
+      const hh = h.toString().padStart(2,'0');
+      const mm = m.toString().padStart(2,'0');
+      const ss = s.toString().padStart(2,'0');
+      return `${hh}:${mm}:${ss}`;
+    }
+
+    // 到點提醒（通知 + 內建蜂鳴音）
+    async function notify(){
+      try{
+        if ('Notification' in window){
+          if (Notification.permission === 'granted'){
+            new Notification('倒計時結束', { body: '時間到！', silent:false });
+          } else if (Notification.permission !== 'denied'){
+            const perm = await Notification.requestPermission();
+            if (perm === 'granted'){
+              new Notification('倒計時結束', { body: '時間到！', silent:false });
+            }
+          }
+        }
+      }catch(e){}
+
+      try{
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'triangle';
+        o.frequency.value = 880;
+        g.gain.setValueAtTime(0.0001, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
+        o.connect(g).connect(ctx.destination);
+        o.start();
+        o.stop(ctx.currentTime + 0.62);
+      }catch(e){}
+    }
+  </script>
+</body>
+</html>
